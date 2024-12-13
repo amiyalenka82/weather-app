@@ -4,7 +4,7 @@ package com.weather.app.model;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
-public class WeatherAPIResponse {
+public class WeatherbitAPIResponse {
     private int count;
     private List<Data> data;
 

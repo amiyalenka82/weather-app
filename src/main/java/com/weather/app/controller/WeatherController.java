@@ -27,9 +27,4 @@ public class WeatherController {
                                                                @RequestParam(required = false) String userName) {
         return ResponseEntity.ok(weatherService.getHistory(postalCode, userName));
     }
-    
-    @GetMapping("/home")
-    public String home() {
-        return "A poc for weather app";
-    }
 }

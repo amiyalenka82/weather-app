@@ -13,4 +13,5 @@ public class WeatherHistoryResponse {
     private double temperature;
     private double humidity;
     private String weatherCondition;
+    private ErrorResponse errorResponse;
 }

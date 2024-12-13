@@ -14,6 +14,5 @@ public class WeatherResponse {
     private String postalCode;
     private String userName;
     private int windDirection;
+    private ErrorResponse errorResponse;
 }
-
-

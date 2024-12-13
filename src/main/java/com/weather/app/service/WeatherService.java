@@ -1,6 +1,7 @@
 package com.weather.app.service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -11,7 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.weather.app.model.WeatherAPIResponse;
+import com.weather.app.model.WeatherbitAPIResponse;
+import com.weather.app.model.ErrorResponse;
 import com.weather.app.model.WeatherHistory;
 import com.weather.app.model.WeatherHistoryResponse;
 import com.weather.app.model.WeatherResponse;
@@ -36,20 +38,24 @@ public class WeatherService {
 	String country;
 
 	public WeatherResponse getWeather(String postalCode, String userName) {
+		WeatherResponse weatherResponse = new WeatherResponse();
 		boolean isValidPostalCode = isValidPostalCode(postalCode);
-
 		if (!isValidPostalCode) {
-			throw new IllegalArgumentException("Invalid postalCode.");
-			// prepare invalid input error response
-			// Add error logger
+			ErrorResponse errorResponse = getErrorResponse("400", "Invalid postal code");
+			// TODO move the constants to a constant or config file
+			// TODO add error logger
+			weatherResponse.setErrorResponse(errorResponse);
+			return weatherResponse;
 		}
 
 		String url = getAPIUrl(postalCode);
-		// For this API call to weather bit, we can use circuit breaker 
+		
+		// TODO For this API call to weather bit, use circuit breaker for resiliency
 		String jsonResponse = restTemplate.getForObject(url, String.class);
-		WeatherAPIResponse response = prepareWeatherAPIResponse(jsonResponse);
+		
+		WeatherbitAPIResponse weatherbitAPIResponse = prepareWeatherBitAPIResponse(jsonResponse);
 
-		WeatherResponse weatherResponse = prepareWeatherResponse(postalCode, userName, response);
+		prepareWeatherResponse(postalCode, userName, weatherbitAPIResponse, weatherResponse);
 
 		persistWeatherHistory(postalCode, userName, weatherResponse);
 
@@ -57,18 +63,33 @@ public class WeatherService {
 	}
 
 	public List<WeatherHistoryResponse> getHistory(String postalCode, String userName) {
-		List<WeatherHistory> histories;
+		List<WeatherHistory> histories = null;
 
 		if (postalCode != null) {
 			histories = weatherRepository.findByPostalCode(postalCode);
 		} else if (userName != null) {
 			histories = weatherRepository.findByUserName(userName);
 		} else {
-			throw new IllegalArgumentException("Either postalCode or user must be provided.");
+			List<WeatherHistoryResponse> historyResponses = new ArrayList<WeatherHistoryResponse>();
+			ErrorResponse errorResponse = getErrorResponse("400", "Either postalCode or user must be provided.");
+			// TODO move the constants to a constant or config file
+			
+			WeatherHistoryResponse weatherHistoryResponse = new WeatherHistoryResponse();
+			weatherHistoryResponse.setErrorResponse(errorResponse);
+			historyResponses.add(weatherHistoryResponse);
+			
+			return historyResponses;
+			
 			// TODO add error logger
 		}
+		return  buildWeatherHistoryResponse(histories);
+	}
 
-		return buildWeatherHistoryResponse(histories);
+	private ErrorResponse getErrorResponse(String errorCode, String errorMessage) {
+		ErrorResponse errorResponse = new ErrorResponse();
+		errorResponse.setErrorCode(errorCode);
+		errorResponse.setErrorMessage(errorMessage);
+		return errorResponse;
 	}
 
 	private List<WeatherHistoryResponse> buildWeatherHistoryResponse(List<WeatherHistory> histories) {
@@ -91,29 +112,33 @@ public class WeatherService {
 		history.setTemperature(weatherResponse.getTemperature());
 		history.setHumidity(weatherResponse.getHumidity());
 		history.setWeatherCondition(weatherResponse.getDescription());
-		weatherRepository.save(history);
+		try {
+			weatherRepository.save(history);
+		} catch (RuntimeException exception) {
+			// TODO add logger error for the failed ones
+			// Prepare ErrorResponse with appropriate error code and error message
+		}
+		
+		// TODO add logger info for persisting into DB
 	}
 
-	private WeatherResponse prepareWeatherResponse(String postalCode, String userName, WeatherAPIResponse response) {
-		WeatherResponse weatherResponse = new WeatherResponse();
+	private void prepareWeatherResponse(String postalCode, String userName, WeatherbitAPIResponse weatherbitAPIResponse, WeatherResponse weatherResponse) {
 		weatherResponse.setUserName(userName);
 		weatherResponse.setPostalCode(postalCode);
 
-		for (WeatherAPIResponse.Data data : response.getData()) {
+		for (WeatherbitAPIResponse.Data data : weatherbitAPIResponse.getData()) {
 			weatherResponse.setHumidity(data.getRh());
 			weatherResponse.setTemperature(data.getTemp());
 			weatherResponse.setWindDirection(data.getWindDir());
 			weatherResponse.setDescription(data.getWeather().getDescription());
 		}
-
-		return weatherResponse;
 	}
 
-	private WeatherAPIResponse prepareWeatherAPIResponse(String jsonResponse) {
-		WeatherAPIResponse response = new WeatherAPIResponse();
+	private WeatherbitAPIResponse prepareWeatherBitAPIResponse(String jsonResponse) {
+		WeatherbitAPIResponse response = new WeatherbitAPIResponse();
 		try {
 			ObjectMapper objectMapper = new ObjectMapper();
-			response = objectMapper.readValue(jsonResponse, WeatherAPIResponse.class);
+			response = objectMapper.readValue(jsonResponse, WeatherbitAPIResponse.class);
 		} catch (Exception e) {
 			e.printStackTrace();
 			// TODO add exception logger

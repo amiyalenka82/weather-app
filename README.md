@@ -41,3 +41,7 @@ The application uses [Weatherbit API](https://www.weatherbit.io/api) to fetch we
 
 2. User details are taken from the request parameter.  
    - For a production-ready application, user details would ideally be extracted from a token.
+ 
+ ## API's
+ 1. Get the weather details: http://localhost:8080/app/weather?postalCode=10001&userName=amiya
+ 2. Get the history: http://localhost:8080/app/history?postalCode=10001&userName=amiya
