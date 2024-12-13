@@ -8,8 +8,8 @@ import lombok.Setter;
 @Getter
 @Setter
 public class WeatherResponse {
-    private double temperature;
-    private double humidity;
+    private Double temperature;
+    private int humidity;
     private String description;
     private String postalCode;
     private String userName;

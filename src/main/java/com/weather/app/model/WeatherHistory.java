@@ -19,6 +19,6 @@ public class WeatherHistory {
     private String postalCode;
     private String userName;
     private Double temperature;
-    private Double humidity;
+    private int humidity;
     private String weatherCondition;
 }

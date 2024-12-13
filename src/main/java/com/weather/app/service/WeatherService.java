@@ -104,7 +104,7 @@ public class WeatherService {
 		}).collect(Collectors.toList());
 	}
 	
-	private void persistWeatherHistory(String postalCode, String userName, WeatherResponse weatherResponse) {
+	void persistWeatherHistory(String postalCode, String userName, WeatherResponse weatherResponse) {
 		WeatherHistory history = new WeatherHistory();
 		history.setTimestamp(LocalDateTime.now());
 		history.setPostalCode(postalCode);
@@ -122,7 +122,7 @@ public class WeatherService {
 		// TODO add logger info for persisting into DB
 	}
 
-	private void prepareWeatherResponse(String postalCode, String userName, WeatherbitAPIResponse weatherbitAPIResponse, WeatherResponse weatherResponse) {
+	void prepareWeatherResponse(String postalCode, String userName, WeatherbitAPIResponse weatherbitAPIResponse, WeatherResponse weatherResponse) {
 		weatherResponse.setUserName(userName);
 		weatherResponse.setPostalCode(postalCode);
 
@@ -134,7 +134,7 @@ public class WeatherService {
 		}
 	}
 
-	private WeatherbitAPIResponse prepareWeatherBitAPIResponse(String jsonResponse) {
+	WeatherbitAPIResponse prepareWeatherBitAPIResponse(String jsonResponse) {
 		WeatherbitAPIResponse response = new WeatherbitAPIResponse();
 		try {
 			ObjectMapper objectMapper = new ObjectMapper();
