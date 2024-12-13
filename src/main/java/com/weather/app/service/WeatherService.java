@@ -6,6 +6,9 @@ import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -37,14 +40,18 @@ public class WeatherService {
 	@Value("${weatherbit.country}")
 	String country;
 
+	private static final Logger logger = LoggerFactory.getLogger(WeatherService.class);
+
 	public WeatherResponse getWeather(String postalCode, String userName) {
 		WeatherResponse weatherResponse = new WeatherResponse();
 		boolean isValidPostalCode = isValidPostalCode(postalCode);
 		if (!isValidPostalCode) {
 			ErrorResponse errorResponse = getErrorResponse("400", "Invalid postal code");
 			// TODO move the constants to a constant or config file
-			// TODO add error logger
 			weatherResponse.setErrorResponse(errorResponse);
+			
+			logger.error("Invalid input: Either postalCode or userName must be provided.");
+			
 			return weatherResponse;
 		}
 
@@ -78,9 +85,9 @@ public class WeatherService {
 			weatherHistoryResponse.setErrorResponse(errorResponse);
 			historyResponses.add(weatherHistoryResponse);
 			
-			return historyResponses;
+			logger.error("Invalid input: Either postalCode or userName must be provided.");
 			
-			// TODO add error logger
+			return historyResponses;
 		}
 		return  buildWeatherHistoryResponse(histories);
 	}
@@ -96,7 +103,7 @@ public class WeatherService {
 		return histories.stream().map(history -> {
 			WeatherHistoryResponse WeatherHistoryResponse = new WeatherHistoryResponse();
 			WeatherHistoryResponse.setPostalCode(history.getPostalCode());
-			WeatherHistoryResponse.setUser(history.getUserName());
+			WeatherHistoryResponse.setUserName(history.getUserName());
 			WeatherHistoryResponse.setTemperature(history.getTemperature());
 			WeatherHistoryResponse.setHumidity(history.getHumidity());
 			WeatherHistoryResponse.setWeatherCondition(history.getWeatherCondition());
@@ -114,12 +121,13 @@ public class WeatherService {
 		history.setWeatherCondition(weatherResponse.getDescription());
 		try {
 			weatherRepository.save(history);
+			logger.info("Successfully persisted weather history for postalCode: {}, userName: {}", postalCode, userName);
+		        
 		} catch (RuntimeException exception) {
-			// TODO add logger error for the failed ones
+			logger.error("Failed to persist weather history for postalCode: {}, userName: {}. Error: {}", postalCode, userName, exception.getMessage(), exception);
+
 			// Prepare ErrorResponse with appropriate error code and error message
 		}
-		
-		// TODO add logger info for persisting into DB
 	}
 
 	void prepareWeatherResponse(String postalCode, String userName, WeatherbitAPIResponse weatherbitAPIResponse, WeatherResponse weatherResponse) {
@@ -140,8 +148,8 @@ public class WeatherService {
 			ObjectMapper objectMapper = new ObjectMapper();
 			response = objectMapper.readValue(jsonResponse, WeatherbitAPIResponse.class);
 		} catch (Exception e) {
-			e.printStackTrace();
-			// TODO add exception logger
+			logger.error("Failed while preparing WeatherbitAPIResponse.");
+			// TODO prepare error response
 		}
 		return response;
 	}

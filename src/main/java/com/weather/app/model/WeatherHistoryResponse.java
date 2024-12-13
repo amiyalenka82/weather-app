@@ -9,7 +9,8 @@ import lombok.Setter;
 @Setter
 public class WeatherHistoryResponse {
     private String postalCode;
-    private String user;
+    private String description;
+    private String userName;
     private double temperature;
     private double humidity;
     private String weatherCondition;

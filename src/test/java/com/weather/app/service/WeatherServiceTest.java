@@ -109,7 +109,7 @@ class WeatherServiceTest {
 
         assertNotNull(responses);
         assertEquals(1, responses.size());
-        assertEquals(userName, responses.get(0).getUser());
+        assertEquals(userName, responses.get(0).getUserName());
     }
 
     @Test
