@@ -79,7 +79,7 @@ public class WeatherController {
 
             if (historyResponses.isEmpty() || historyResponses.get(0).getErrorResponse() != null) {
                 logger.warn("No valid history found. Returning error response.");
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(createErrorResponse(ErrorConstants.BAD_REQUEST_ERROR_CODE, ErrorConstants.BAD_REQUEST_ERROR_MESSAGE));
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(createErrorResponse(ErrorConstants.NO_RESULTS_ERROR_CODE, ErrorConstants.NO_RESULTS_ERROR_MESSAGE));
             }
 
             return ResponseEntity.ok(historyResponses);
