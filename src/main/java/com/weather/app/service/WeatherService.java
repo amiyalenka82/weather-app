@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClientException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.weather.app.model.WeatherbitAPIResponse;
@@ -25,151 +26,169 @@ import com.weather.app.repository.WeatherRepository;
 @Service
 public class WeatherService {
 
-	@Autowired
-	private WeatherRepository weatherRepository;
+    @Autowired
+    private WeatherRepository weatherRepository;
 
-	@Autowired
-	private RestTemplate restTemplate;
+    @Autowired
+    private RestTemplate restTemplate;
 
-	@Value("${weatherbit.api.key}")
-	private String apiKey;
+    @Value("${weatherbit.api.key}")
+    private String apiKey;
 
-	@Value("${weatherbit.api.url}")
-	private String apiUrl;
+    @Value("${weatherbit.api.url}")
+    private String apiUrl;
 
-	@Value("${weatherbit.country}")
-	String country;
+    @Value("${weatherbit.country}")
+    private String country;
 
-	private static final Logger logger = LoggerFactory.getLogger(WeatherService.class);
+    private static final Logger logger = LoggerFactory.getLogger(WeatherService.class);
 
-	public WeatherResponse getWeather(String postalCode, String userName) {
-		WeatherResponse weatherResponse = new WeatherResponse();
-		boolean isValidPostalCode = isValidPostalCode(postalCode);
-		if (!isValidPostalCode) {
-			ErrorResponse errorResponse = getErrorResponse("400", "Invalid postal code");
-			// TODO move the constants to a constant or config file
-			weatherResponse.setErrorResponse(errorResponse);
-			
-			logger.error("Invalid input: Either postalCode or userName must be provided.");
-			
-			return weatherResponse;
-		}
+    private static final String ERROR_INVALID_POSTAL_CODE = "Invalid postal code";
+    private static final String ERROR_MISSING_INPUT = "Either postalCode or userName must be provided.";
+    private static final String ERROR_API_CALL = "Failed to fetch weather data from Weatherbit API.";
+    private static final String ERROR_HISTORY_PERSIST = "Failed to persist weather history.";
 
-		String url = getAPIUrl(postalCode);
-		
-		// TODO For this API call to weather bit, use circuit breaker for resiliency
-		String jsonResponse = restTemplate.getForObject(url, String.class);
-		
-		WeatherbitAPIResponse weatherbitAPIResponse = prepareWeatherBitAPIResponse(jsonResponse);
+    private static final String ERROR_CODE_BAD_REQUEST = "400";
 
-		prepareWeatherResponse(postalCode, userName, weatherbitAPIResponse, weatherResponse);
+    /**
+     * Fetches the current weather data based on the postal code.
+     *
+     * @param postalCode the postal code to fetch weather for
+     * @param userName   the user requesting the weather information
+     * @return WeatherResponse object with weather data or error information
+     */
+    public WeatherResponse getWeather(String postalCode, String userName) {
+        WeatherResponse weatherResponse = new WeatherResponse();
 
-		persistWeatherHistory(postalCode, userName, weatherResponse);
+        if (!isValidPostalCode(postalCode)) {
+            logger.error(ERROR_INVALID_POSTAL_CODE);
+            weatherResponse.setErrorResponse(getErrorResponse(ERROR_CODE_BAD_REQUEST, ERROR_INVALID_POSTAL_CODE));
+            return weatherResponse;
+        }
 
-		return weatherResponse;
-	}
+        String url = getAPIUrl(postalCode);
+        WeatherbitAPIResponse weatherbitAPIResponse;
 
-	public List<WeatherHistoryResponse> getHistory(String postalCode, String userName) {
-		List<WeatherHistory> histories = null;
+        try {
+            String jsonResponse = restTemplate.getForObject(url, String.class);
+            weatherbitAPIResponse = prepareWeatherBitAPIResponse(jsonResponse);
+        } catch (RestClientException e) {
+            logger.error(ERROR_API_CALL, e);
+            weatherResponse.setErrorResponse(getErrorResponse(ERROR_CODE_BAD_REQUEST, ERROR_API_CALL));
+            return weatherResponse;
+        }
 
-		if (postalCode != null) {
-			histories = weatherRepository.findByPostalCode(postalCode);
-		} else if (userName != null) {
-			histories = weatherRepository.findByUserName(userName);
-		} else {
-			List<WeatherHistoryResponse> historyResponses = new ArrayList<WeatherHistoryResponse>();
-			ErrorResponse errorResponse = getErrorResponse("400", "Either postalCode or user must be provided.");
-			// TODO move the constants to a constant or config file
-			
-			WeatherHistoryResponse weatherHistoryResponse = new WeatherHistoryResponse();
-			weatherHistoryResponse.setErrorResponse(errorResponse);
-			historyResponses.add(weatherHistoryResponse);
-			
-			logger.error("Invalid input: Either postalCode or userName must be provided.");
-			
-			return historyResponses;
-		}
-		return  buildWeatherHistoryResponse(histories);
-	}
+        prepareWeatherResponse(postalCode, userName, weatherbitAPIResponse, weatherResponse);
+        persistWeatherHistory(postalCode, userName, weatherResponse);
 
-	private ErrorResponse getErrorResponse(String errorCode, String errorMessage) {
-		ErrorResponse errorResponse = new ErrorResponse();
-		errorResponse.setErrorCode(errorCode);
-		errorResponse.setErrorMessage(errorMessage);
-		return errorResponse;
-	}
+        return weatherResponse;
+    }
 
-	private List<WeatherHistoryResponse> buildWeatherHistoryResponse(List<WeatherHistory> histories) {
-		return histories.stream().map(history -> {
-			WeatherHistoryResponse WeatherHistoryResponse = new WeatherHistoryResponse();
-			WeatherHistoryResponse.setPostalCode(history.getPostalCode());
-			WeatherHistoryResponse.setUserName(history.getUserName());
-			WeatherHistoryResponse.setTemperature(history.getTemperature());
-			WeatherHistoryResponse.setHumidity(history.getHumidity());
-			WeatherHistoryResponse.setWeatherCondition(history.getWeatherCondition());
-			return WeatherHistoryResponse;
-		}).collect(Collectors.toList());
-	}
-	
-	void persistWeatherHistory(String postalCode, String userName, WeatherResponse weatherResponse) {
-		WeatherHistory history = new WeatherHistory();
-		history.setTimestamp(LocalDateTime.now());
-		history.setPostalCode(postalCode);
-		history.setUserName(userName);
-		history.setTemperature(weatherResponse.getTemperature());
-		history.setHumidity(weatherResponse.getHumidity());
-		history.setWeatherCondition(weatherResponse.getDescription());
-		try {
-			weatherRepository.save(history);
-			logger.info("Successfully persisted weather history for postalCode: {}, userName: {}", postalCode, userName);
-		        
-		} catch (RuntimeException exception) {
-			logger.error("Failed to persist weather history for postalCode: {}, userName: {}. Error: {}", postalCode, userName, exception.getMessage(), exception);
+    /**
+     * Fetches the weather history based on postal code or user name.
+     *
+     * @param postalCode the postal code to fetch history for
+     * @param userName   the user whose history is requested
+     * @return a list of WeatherHistoryResponse objects
+     */
+    public List<WeatherHistoryResponse> getHistory(String postalCode, String userName) {
+        List<WeatherHistory> histories;
 
-			// Prepare ErrorResponse with appropriate error code and error message
-		}
-	}
+        if (postalCode != null) {
+            histories = weatherRepository.findByPostalCode(postalCode);
+        } else if (userName != null) {
+            histories = weatherRepository.findByUserName(userName);
+        } else {
+            logger.error(ERROR_MISSING_INPUT);
+            List<WeatherHistoryResponse> errorResponse = new ArrayList<>();
+            WeatherHistoryResponse weatherHistoryResponse = new WeatherHistoryResponse();
+            weatherHistoryResponse.setErrorResponse(getErrorResponse(ERROR_CODE_BAD_REQUEST, ERROR_MISSING_INPUT));
+            errorResponse.add(weatherHistoryResponse);
+            return errorResponse;
+        }
 
-	void prepareWeatherResponse(String postalCode, String userName, WeatherbitAPIResponse weatherbitAPIResponse, WeatherResponse weatherResponse) {
-		weatherResponse.setUserName(userName);
-		weatherResponse.setPostalCode(postalCode);
+        return buildWeatherHistoryResponse(histories);
+    }
 
-		for (WeatherbitAPIResponse.Data data : weatherbitAPIResponse.getData()) {
-			weatherResponse.setHumidity(data.getRh());
-			weatherResponse.setTemperature(data.getTemp());
-			weatherResponse.setWindDirection(data.getWindDir());
-			weatherResponse.setDescription(data.getWeather().getDescription());
-		}
-	}
+    /**
+     * Persists weather history in the database.
+     *
+     * @param postalCode      the postal code associated with the weather data
+     * @param userName        the user who requested the data
+     * @param weatherResponse the weather response to persist
+     */
+    void persistWeatherHistory(String postalCode, String userName, WeatherResponse weatherResponse) {
+        WeatherHistory history = new WeatherHistory();
+        history.setTimestamp(LocalDateTime.now());
+        history.setPostalCode(postalCode);
+        history.setUserName(userName);
+        history.setTemperature(weatherResponse.getTemperature());
+        history.setHumidity(weatherResponse.getHumidity());
+        history.setWeatherCondition(weatherResponse.getDescription());
 
-	WeatherbitAPIResponse prepareWeatherBitAPIResponse(String jsonResponse) {
-		WeatherbitAPIResponse response = new WeatherbitAPIResponse();
-		try {
-			ObjectMapper objectMapper = new ObjectMapper();
-			response = objectMapper.readValue(jsonResponse, WeatherbitAPIResponse.class);
-		} catch (Exception e) {
-			logger.error("Failed while preparing WeatherbitAPIResponse.");
-			// TODO prepare error response
-		}
-		return response;
-	}
+        try {
+            weatherRepository.save(history);
+            logger.info("Weather history persisted successfully for postalCode: {}, userName: {}", postalCode, userName);
+        } catch (RuntimeException e) {
+            logger.error(ERROR_HISTORY_PERSIST, e);
+        }
+    }
 
-	private String getAPIUrl(String postalCode) {
-		String url = apiUrl + "?postal_code=" + postalCode + "&country=" + country + "&key=" + apiKey;
-		return url;
-	}
+    /**
+     * Prepares the weather response based on API data.
+     *
+     * @param postalCode      the postal code
+     * @param userName        the user name
+     * @param apiResponse     the response from Weatherbit API
+     * @param weatherResponse the weather response object to populate
+     */
+    void prepareWeatherResponse(String postalCode, String userName, WeatherbitAPIResponse apiResponse, WeatherResponse weatherResponse) {
+        weatherResponse.setPostalCode(postalCode);
+        weatherResponse.setUserName(userName);
 
-	// Method to validate the postal code
-	private boolean isValidPostalCode(String postalCode) {
-		// Define the regex pattern for postal code
-		String postalCodePattern = "^[0-9]{5}(?:-[0-9]{4})?$"; // US ZIP Code format: 12345 or 12345-6789
+        if (apiResponse.getData() != null && !apiResponse.getData().isEmpty()) {
+            WeatherbitAPIResponse.Data data = apiResponse.getData().get(0);
+            weatherResponse.setTemperature(data.getTemp());
+            weatherResponse.setHumidity(data.getRh());
+            weatherResponse.setWindDirection(data.getWindDir());
+            weatherResponse.setDescription(data.getWeather().getDescription());
+        }
+    }
 
-		// Check if postal code is null or empty
-		if (postalCode == null || postalCode.trim().isEmpty()) {
-			return false;
-		}
+    WeatherbitAPIResponse prepareWeatherBitAPIResponse(String jsonResponse) {
+        try {
+            return new ObjectMapper().readValue(jsonResponse, WeatherbitAPIResponse.class);
+        } catch (Exception e) {
+            logger.error("Failed to parse Weatherbit API response.", e);
+            throw new RuntimeException("Invalid API response format.");
+        }
+    }
 
-		// Use regex to validate the postal code
-		return Pattern.matches(postalCodePattern, postalCode);
-	}
+    private String getAPIUrl(String postalCode) {
+        return String.format("%s?postal_code=%s&country=%s&key=%s", apiUrl, postalCode, country, apiKey);
+    }
+
+    private boolean isValidPostalCode(String postalCode) {
+        String postalCodePattern = "^[0-9]{5}(?:-[0-9]{4})?$";
+        return postalCode != null && Pattern.matches(postalCodePattern, postalCode.trim());
+    }
+
+    private ErrorResponse getErrorResponse(String errorCode, String errorMessage) {
+        ErrorResponse errorResponse = new ErrorResponse();
+        errorResponse.setErrorCode(errorCode);
+        errorResponse.setErrorMessage(errorMessage);
+        return errorResponse;
+    }
+
+    private List<WeatherHistoryResponse> buildWeatherHistoryResponse(List<WeatherHistory> histories) {
+        return histories.stream().map(history -> {
+            WeatherHistoryResponse response = new WeatherHistoryResponse();
+            response.setPostalCode(history.getPostalCode());
+            response.setUserName(history.getUserName());
+            response.setTemperature(history.getTemperature());
+            response.setHumidity(history.getHumidity());
+            response.setWeatherCondition(history.getWeatherCondition());
+            return response;
+        }).collect(Collectors.toList());
+    }
 }

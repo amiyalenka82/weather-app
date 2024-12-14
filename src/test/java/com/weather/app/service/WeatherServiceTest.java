@@ -120,7 +120,7 @@ class WeatherServiceTest {
         assertEquals(1, responses.size());
         assertNotNull(responses.get(0).getErrorResponse());
         assertEquals("400", responses.get(0).getErrorResponse().getErrorCode());
-        assertEquals("Either postalCode or user must be provided.", responses.get(0).getErrorResponse().getErrorMessage());
+        assertEquals("Either postalCode or userName must be provided.", responses.get(0).getErrorResponse().getErrorMessage());
     }
 
     @Test
